@@ -1,0 +1,57 @@
+I am facing a session/login persistence issue in Android WebView.
+
+Problem:
+When users log into websites (especially Google accounts) inside WebView, the login does not persist. After 1–2 days (or sometimes even earlier), the user is automatically logged out. This happens across multiple services, not just one website.
+
+Observed Behavior:
+
+- Login works initially
+- Cookies/session seem to be created
+- After some time or app restart, user gets logged out
+- This happens repeatedly and is not reliable
+
+What I understand so far:
+
+- WebView does not always persist cookies and session storage properly
+- Android system may clear WebView data when app is killed or due to battery optimization
+- Google and some other services intentionally restrict or invalidate sessions in WebView for security reasons
+- Improper configuration (cookies, DOM storage, WebChromeClient, etc.) can worsen the issue
+
+What I need:
+
+1. A COMPLETE and CORRECT implementation to maximize session persistence in WebView, including:
+   
+   - Cookies enabled (including third-party cookies)
+   - Cookie persistence (flush/sync properly)
+   - DOM storage enabled
+   - Database/storage enabled
+   - Proper WebView lifecycle handling
+   - Avoid clearing cache or cookies unintentionally
+   - Stable WebView instance usage (avoid recreation issues)
+
+2. Explanation of limitations:
+   
+   - Clearly explain why services like Google logout users in WebView
+   - Mention security restrictions and WebView limitations
+
+3. 100% reliable alternative solution (MANDATORY):
+   If WebView cannot reliably maintain login sessions, provide a production-ready alternative:
+   
+   - Chrome Custom Tabs implementation OR
+   - External browser fallback OR
+   - Official Google Sign-In integration (preferred for Google accounts)
+
+Important Requirement:
+
+- Do NOT provide partial fixes
+- Provide a real-world working solution that prevents logout issues
+- If WebView cannot guarantee persistence, clearly switch to a better approach
+
+Expected Output:
+
+- Full working code (Java/Kotlin or Flutter)
+- Best practice architecture for handling login sessions
+- Clear recommendation of the most reliable approach
+
+Goal:
+I want users to stay logged in without repeated logout issues and ensure a stable authentication experience in my app.
