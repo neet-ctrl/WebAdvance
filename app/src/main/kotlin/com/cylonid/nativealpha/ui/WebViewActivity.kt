@@ -1600,6 +1600,147 @@ fun WebViewScreen(
             webViewState.error?.let { error ->
                 WaosErrorPanel(error = error, onRetry = { viewModel.refresh() })
             }
+
+            // ── PiP floating-window chrome ────────────────────────────────────
+            // When PiP is active this overlay makes the window look like the
+            // old FloatingWindowService: gradient title bar, cyan accent strip,
+            // expand + close buttons, and a bottom mini nav bar.
+            // (PiP windows are not interactive so the overlay never blocks input.)
+            if (isPipMode) {
+                val pipActivity = context as? android.app.Activity
+                // Glowing cyan border around the whole window
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(1.5.dp, CyanPrimary.copy(alpha = 0.55f))
+                )
+                // Title bar — top of window
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF060912), Color(0xFF141C2E))
+                            )
+                        )
+                        .align(Alignment.TopStart),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .fillMaxHeight()
+                            .background(CyanPrimary)
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = webApp?.name ?: run {
+                            val u = webViewState.currentUrl
+                            try { java.net.URI(u).host?.removePrefix("www.") ?: u }
+                            catch (_: Exception) { u }
+                        },
+                        color = TextPrimary,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    // Expand to full screen
+                    IconButton(
+                        onClick = {
+                            pipActivity?.startActivity(
+                                Intent(context, pipActivity::class.java).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                             Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                                }
+                            )
+                        },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Launch,
+                            contentDescription = "Full screen",
+                            tint = CyanPrimary,
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
+                    // Close
+                    IconButton(
+                        onClick = { pipActivity?.finish() },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Close",
+                            tint = ErrorRed,
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
+                }
+                // Bottom mini nav bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(24.dp)
+                        .background(Color(0xDD060912))
+                        .align(Alignment.BottomStart),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    IconButton(
+                        onClick = { webViewRef.value?.goBack() },
+                        enabled = webViewState.canGoBack,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = if (webViewState.canGoBack) TextSecondary else TextMuted,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                    Text(
+                        text = run {
+                            val u = webViewState.currentUrl
+                            try { java.net.URI(u).host?.removePrefix("www.") ?: u }
+                            catch (_: Exception) { u }
+                        },
+                        color = TextMuted,
+                        fontSize = 7.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 2.dp)
+                    )
+                    IconButton(
+                        onClick = { webViewRef.value?.reload() },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "Refresh",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { webViewRef.value?.goForward() },
+                        enabled = webViewState.canGoForward,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowForward,
+                            contentDescription = "Forward",
+                            tint = if (webViewState.canGoForward) TextSecondary else TextMuted,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                }
+            }
+            // ── end PiP chrome ────────────────────────────────────────────────
         }
 
         if (!isPipMode) {
