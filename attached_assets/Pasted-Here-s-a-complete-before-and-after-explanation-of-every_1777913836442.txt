@@ -1,0 +1,95 @@
+Here's a complete before-and-after explanation of everything done in this session, in plain language:
+
+What Was Broken
+Problem 1 — File Upload (e.g. ChatGPT, Gmail, WhatsApp Web)
+Old flow:
+
+You open ChatGPT web app
+You tap the paperclip / upload button
+Nothing happens — no picker, no error, just silence
+The upload button is stuck
+Why: Android WebView requires the app to explicitly handle the "open file picker" request from the webpage. The code had a stub that told the browser "yes I'll handle it" but then did nothing and never opened any picker. Floating windows had no handling at all.
+
+Problem 2 — Floating Window Session Isolation (Cookies, Login, Page History)
+Old flow:
+
+You log into ChatGPT in the main WebView → you're logged in
+You open the floating window of the same app
+You're logged out — different session, different cookies, different page entirely
+Even if you navigate to the same page, nothing carries over
+Why: The main WebView uses an isolated data directory per app (for cookies, localStorage, IndexedDB). The floating window never set up this isolation, so it used a completely different storage — like a fresh browser profile. They were completely separate.
+
+Also, the floating window always opened at the app's home URL (e.g. chatgpt.com), not at the page you were last on.
+
+Problem 3 — Floating Window Doesn't Ask for PIN When App is Locked
+Old flow:
+
+You set a PIN lock on an app
+You open the app normally → it asks for PIN ✓
+You open the floating window of the same app → it opens directly, no PIN asked ✗
+Anyone can bypass your lock by using the floating window
+Why: The PIN check was only implemented in the main Activity. The floating window (a background Service) had no PIN check at all.
+
+Problem 4 — Export Downloaded Files to Your Storage
+Old flow:
+
+You open the Download Manager
+You see your downloaded files
+You can: Open, Share, Duplicate, Delete
+No way to copy the file out to your phone's normal Downloads or any folder you choose
+Why: The "Export to folder" feature simply didn't exist. Files were trapped in the app's private storage.
+
+What Was Fixed and What You Get Now
+Fix 1 — File Upload Now Works Everywhere
+New flow:
+
+You open ChatGPT (or Gmail, WhatsApp Web, Google Drive, etc.)
+You tap the upload / attach button
+The Android file picker opens instantly
+You browse your phone storage, pick a file
+The file uploads to the website — exactly like Chrome does it
+Works in both the main WebView AND the floating window
+Supports: single file, multiple files, filtered by type (images, documents, videos — whatever the website requests).
+
+Fix 2 — Floating Window Shares Session With Main App
+New flow:
+
+You log into ChatGPT in the main WebView → you're on a specific conversation page
+You open the floating window of that same app
+The floating window opens on the same page you were last on
+You're already logged in — same cookies, same session
+Any page you navigate to in the floating window also updates the "last page", so if you switch back to the main app, it picks up from where the floating window left off
+Both views share: cookies, localStorage, IndexedDB, login state, and last visited URL.
+
+Fix 3 — Floating Window Now Respects PIN Lock
+New flow:
+
+You set a PIN lock on an app
+You open the floating window of that app
+The floating window shows a PIN entry screen immediately — WebView is hidden behind it
+You enter the correct PIN → floating window unlocks and shows the page
+Wrong PIN → error message, input clears, try again
+You can still close the floating window from the title bar without entering PIN
+The lock cannot be bypassed via the floating window anymore.
+
+Fix 4 — Export Files to Any Folder on Your Phone
+New flow:
+
+You open Download Manager for any app
+You see your downloaded files (images, videos, PDFs, etc.)
+Next to each file you now see a green save/export button (alongside Share, Copy, Delete)
+Tap it → your phone's folder picker opens
+Navigate to any folder: Downloads, DCIM, Documents, SD card, Google Drive folder — anywhere
+The file is copied there immediately
+A confirmation message appears
+Folders cannot be exported (only individual files), which is shown correctly — the export button only appears on files, not on folder items.
+
+Summary Table
+Feature	Before	After
+File upload in any web app	Broken — nothing happened	Works — system picker opens
+File upload in floating window	Broken — no handler at all	Works — transparent trampoline Activity handles it
+Floating window login/session	Fresh session — logged out	Shared session — same cookies, same login
+Floating window start page	Always opens at home URL	Opens at last page you visited
+Floating window PIN lock	Bypassed — no PIN asked	PIN required — same as main app
+Export file to phone storage	Not available	Tap export → pick folder → file copied there
+You're out of credits.
