@@ -59,6 +59,7 @@ fun DownloadHistoryScreen(
     val exportMessage by viewModel.exportMessage.collectAsState()
 
     var pendingExportItem by remember { mutableStateOf<DownloadViewModel.FileSystemItem?>(null) }
+    var pendingExportFolderPath by remember { mutableStateOf<String?>(null) }
 
     val exportFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -68,6 +69,16 @@ fun DownloadHistoryScreen(
             viewModel.exportFileTo(item, uri)
         }
         pendingExportItem = null
+    }
+
+    val exportAllFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        val folderPath = pendingExportFolderPath
+        if (uri != null && folderPath != null) {
+            viewModel.exportFolderTo(folderPath, uri)
+        }
+        pendingExportFolderPath = null
     }
 
     LaunchedEffect(exportMessage) {
@@ -147,8 +158,40 @@ fun DownloadHistoryScreen(
                                     color = TextSecondary,
                                     fontSize = 12.sp,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                // Export All button — always visible in every folder
+                                val exportPath = currentFolderPath
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(GradGreenStart.copy(alpha = 0.13f))
+                                        .border(1.dp, GradGreenStart.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            if (exportPath != null) {
+                                                pendingExportFolderPath = exportPath
+                                                exportAllFolderLauncher.launch(null)
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.SaveAlt,
+                                            contentDescription = "Export all",
+                                            tint = GradGreenStart,
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            "Export All",
+                                            color = GradGreenStart,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -327,7 +370,11 @@ fun DownloadHistoryScreen(
                         onShare = { viewModel.shareFile(item) },
                         onDuplicate = { viewModel.duplicateFile(item) },
                         onDelete = { viewModel.deleteFile(item) },
-                        onExport = if (item.isDirectory) null else ({
+                        onExport = if (item.isDirectory) ({
+                            // Export all contents of this sub-folder
+                            pendingExportFolderPath = item.path
+                            exportAllFolderLauncher.launch(null)
+                        }) else ({
                             pendingExportItem = item
                             exportFolderLauncher.launch(null)
                         })

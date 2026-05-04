@@ -302,7 +302,7 @@ class DownloadViewModel @Inject constructor(
             try {
                 val sourceFile = File(item.path)
                 if (!sourceFile.exists() || sourceFile.isDirectory) {
-                    _exportMessage.value = "Cannot export folder"
+                    _exportMessage.value = "Cannot export folder directly — use Export All inside the folder"
                     return@launch
                 }
                 val tree = DocumentFile.fromTreeUri(context, treeUri)
@@ -324,5 +324,51 @@ class DownloadViewModel @Inject constructor(
                 _exportMessage.value = "Export failed: ${e.message}"
             }
         }
+    }
+
+    fun exportFolderTo(folderPath: String, treeUri: Uri) {
+        viewModelScope.launch {
+            try {
+                val sourceFolder = File(folderPath)
+                if (!sourceFolder.exists() || !sourceFolder.isDirectory) {
+                    _exportMessage.value = "Folder not found"
+                    return@launch
+                }
+                val tree = DocumentFile.fromTreeUri(context, treeUri)
+                if (tree == null || !tree.canWrite()) {
+                    _exportMessage.value = "Cannot write to selected folder"
+                    return@launch
+                }
+                val count = copyFolderContentsTo(sourceFolder, tree)
+                _exportMessage.value = if (count > 0) "✓ Exported $count file(s) to selected folder"
+                                       else "No files to export in this folder"
+            } catch (e: Exception) {
+                _exportMessage.value = "Export failed: ${e.message}"
+            }
+        }
+    }
+
+    private fun copyFolderContentsTo(sourceFolder: File, destTree: DocumentFile): Int {
+        var count = 0
+        sourceFolder.listFiles()?.forEach { file ->
+            if (file.isDirectory) {
+                val subTree = destTree.createDirectory(file.name) ?: return@forEach
+                count += copyFolderContentsTo(file, subTree)
+            } else {
+                val mimeType = getMimeType(file.name).let {
+                    if (it == "image/*") "image/jpeg"
+                    else if (it.endsWith("/*")) "application/octet-stream"
+                    else it
+                }
+                val newDoc = destTree.createFile(mimeType, file.name) ?: return@forEach
+                try {
+                    context.contentResolver.openOutputStream(newDoc.uri)?.use { out ->
+                        file.inputStream().use { it.copyTo(out) }
+                    }
+                    count++
+                } catch (_: Exception) {}
+            }
+        }
+        return count
     }
 }
