@@ -122,6 +122,17 @@
                 android:tint="@color/fw_text_primary" />
 
             <ImageButton
+                android:id="@+id/returnToAppButton"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="2dp"
+                android:background="@drawable/fw_window_btn_maximize"
+                android:contentDescription="Return to app"
+                android:padding="6dp"
+                android:src="@drawable/ic_baseline_exit_to_app_24"
+                android:tint="@color/fw_btn_max_icon" />
+
+            <ImageButton
                 android:id="@+id/minimizeButton"
                 android:layout_width="28dp"
                 android:layout_height="28dp"

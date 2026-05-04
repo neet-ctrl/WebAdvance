@@ -204,6 +204,16 @@ open class WebViewActivity : ComponentActivity() {
         try { android.webkit.CookieManager.getInstance().flush() } catch (_: Exception) {}
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        WebViewFloatingOverlay.activeOverlay?.dismiss()
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        WebViewFloatingOverlay.activeOverlay?.dismiss()
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQUEST_CODE_CREDENTIALS && resultCode == RESULT_OK && data != null) {
@@ -1570,18 +1580,27 @@ fun WebViewScreen(
             },
             onFloat = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(context)) {
-                    // Request overlay permission
                     val intent = Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
                     context.startActivity(intent)
                 } else {
                     webApp?.let { app ->
-                        val intent = Intent(context, com.cylonid.nativealpha.service.FloatingWindowService::class.java).apply {
-                            action = com.cylonid.nativealpha.service.FloatingWindowService.ACTION_ADD_WINDOW
-                            putExtra("webAppId", app.id)
-                            putExtra("webAppUrl", app.url)
-                            putExtra("webAppName", app.name)
-                        }
-                        context.startService(intent)
+                        val activity = context as? androidx.activity.ComponentActivity ?: return@let
+                        val currentUrl = webViewRef.value?.url
+                            ?.takeIf { it.isNotBlank() && !it.startsWith("about:") }
+                            ?: WebViewActivity.readLastVisitedUrl(context, webAppId)
+                            ?: app.url
+                        WebViewActivity.saveLastVisitedUrl(context, webAppId, currentUrl)
+                        WebViewFloatingOverlay.activeOverlay?.dismiss()
+                        val overlay = WebViewFloatingOverlay(
+                            activity = activity,
+                            webAppId = webAppId,
+                            webAppName = app.name,
+                            webAppHomeUrl = app.url,
+                            currentUrl = currentUrl
+                        )
+                        WebViewFloatingOverlay.activeOverlay = overlay
+                        overlay.show()
+                        activity.moveTaskToBack(true)
                     }
                 }
             },
