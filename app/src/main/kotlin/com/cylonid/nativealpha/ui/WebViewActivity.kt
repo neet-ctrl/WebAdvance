@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
 import android.app.PictureInPictureParams
+import com.cylonid.nativealpha.R
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
