@@ -222,6 +222,53 @@ class FloatingWindowService : Service() {
             setSupportZoom(true)
         }
         webView.webViewClient = webViewClient
+        // Wire up a WebChromeClient so web pages can open the system file picker
+        // (e.g. ChatGPT upload, Gmail attach, any <input type="file">).
+        // Services cannot call startActivityForResult, so we use a trampoline
+        // Activity (FloatingFilePickerActivity) and a static callback holder.
+        webView.webChromeClient = object : android.webkit.WebChromeClient() {
+            override fun onShowFileChooser(
+                wv: android.webkit.WebView?,
+                filePathCallback: android.webkit.ValueCallback<Array<android.net.Uri>>?,
+                fileChooserParams: android.webkit.WebChromeClient.FileChooserParams?
+            ): Boolean {
+                com.cylonid.nativealpha.ui.FloatingFilePickerActivity.pendingCallback
+                    ?.onReceiveValue(null)
+                com.cylonid.nativealpha.ui.FloatingFilePickerActivity.pendingCallback =
+                    filePathCallback
+                val acceptTypes = fileChooserParams?.acceptTypes ?: emptyArray()
+                val allowMultiple = fileChooserParams?.mode ==
+                        android.webkit.WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+                val launchIntent = Intent(
+                    this@FloatingWindowService,
+                    com.cylonid.nativealpha.ui.FloatingFilePickerActivity::class.java
+                ).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    putExtra(
+                        com.cylonid.nativealpha.ui.FloatingFilePickerActivity.EXTRA_ACCEPT_TYPES,
+                        acceptTypes
+                    )
+                    putExtra(
+                        com.cylonid.nativealpha.ui.FloatingFilePickerActivity.EXTRA_ALLOW_MULTIPLE,
+                        allowMultiple
+                    )
+                }
+                return try {
+                    startActivity(launchIntent)
+                    true
+                } catch (e: Exception) {
+                    com.cylonid.nativealpha.ui.FloatingFilePickerActivity.pendingCallback
+                        ?.onReceiveValue(null)
+                    com.cylonid.nativealpha.ui.FloatingFilePickerActivity.pendingCallback = null
+                    false
+                }
+            }
+
+            override fun onProgressChanged(view: android.webkit.WebView?, newProgress: Int) {
+                // no-op — progress not shown in floating window title bar
+            }
+        }
+
         // Open at the last page the user visited in the main WebView (or the home URL if none)
         val startUrl = WebViewActivity.readLastVisitedUrl(this, webAppId)
             ?.takeIf { it.isNotBlank() } ?: webAppUrl

@@ -104,6 +104,13 @@
             android:exported="false" />
 
         <activity
+            android:name="com.cylonid.nativealpha.ui.FloatingFilePickerActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask" />
+
+        <activity
             android:name="com.cylonid.nativealpha.waos.ui.DownloadHistoryActivity"
             android:parentActivityName=".MainActivity"
             android:theme="@style/AppTheme"

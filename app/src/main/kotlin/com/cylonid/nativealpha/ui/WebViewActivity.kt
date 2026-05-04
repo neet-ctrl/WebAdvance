@@ -334,6 +334,8 @@ fun WebViewScreen(
     var pendingPermissionRequest by remember { mutableStateOf<PermissionRequest?>(null) }
     var showSessionPasteDialog by remember { mutableStateOf(false) }
     var sessionPasteText by remember { mutableStateOf("") }
+    // Holds the WebChromeClient file-chooser callback while the system file picker is open
+    val fileChooserCallbackState = remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
 
     // SAF picker for Import Session (.waos files)
     val importSessionLauncher = rememberLauncherForActivityResult(
@@ -357,6 +359,15 @@ fun WebViewScreen(
         } catch (e: Exception) {
             android.widget.Toast.makeText(context, "Import failed: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
         }
+    }
+
+    // File picker launched by WebChromeClient.onShowFileChooser (e.g. ChatGPT upload, Gmail attach)
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+        fileChooserCallbackState.value?.onReceiveValue(uris)
+        fileChooserCallbackState.value = null
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -1229,7 +1240,24 @@ fun WebViewScreen(
                                 webView: WebView?,
                                 filePathCallback: ValueCallback<Array<Uri>>?,
                                 fileChooserParams: WebChromeClient.FileChooserParams?
-                            ): Boolean = true
+                            ): Boolean {
+                                // Cancel any stale pending callback first
+                                fileChooserCallbackState.value?.onReceiveValue(null)
+                                fileChooserCallbackState.value = filePathCallback
+                                return try {
+                                    val intent = fileChooserParams?.createIntent()
+                                        ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                                            type = "*/*"
+                                            addCategory(Intent.CATEGORY_OPENABLE)
+                                        }
+                                    filePickerLauncher.launch(intent)
+                                    true
+                                } catch (e: Exception) {
+                                    fileChooserCallbackState.value = null
+                                    filePathCallback?.onReceiveValue(null)
+                                    false
+                                }
+                            }
                             override fun onPermissionRequest(request: PermissionRequest?) {
                                 val app = webAppRef.value
                                 val requestedResources = request?.resources?.filter { resource ->
