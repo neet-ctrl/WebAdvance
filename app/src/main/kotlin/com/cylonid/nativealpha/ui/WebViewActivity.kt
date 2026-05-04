@@ -8,9 +8,12 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcel
+import android.util.Rational
 import android.util.Log
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -166,6 +169,10 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 open class WebViewActivity : ComponentActivity() {
 
+    // Tracks whether the activity is currently in Picture-in-Picture mode.
+    // Written in onPictureInPictureModeChanged, read in the Compose UI to hide toolbars.
+    private val _isPipMode = androidx.compose.runtime.mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -199,7 +206,8 @@ open class WebViewActivity : ComponentActivity() {
             ) {
                 WebViewScreen(
                     webAppId = webAppId,
-                    onBackPressed = { finish() }
+                    onBackPressed = { finish() },
+                    isPipMode = _isPipMode.value
                 )
             }
         }
@@ -221,6 +229,14 @@ open class WebViewActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         WebViewFloatingOverlay.activeOverlay?.dismiss()
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        _isPipMode.value = isInPictureInPictureMode
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -335,6 +351,7 @@ open class WebViewActivity : ComponentActivity() {
 fun WebViewScreen(
     webAppId: Long,
     onBackPressed: () -> Unit,
+    isPipMode: Boolean = false,
     viewModel: WebViewViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -917,6 +934,7 @@ fun WebViewScreen(
             .statusBarsPadding()
     ) {
         val urlEditScope = rememberCoroutineScope()
+        if (!isPipMode) {
         WaosTopBar(
             title = webApp?.name ?: "Web App",
             url = webViewState.currentUrl,
@@ -941,6 +959,7 @@ fun WebViewScreen(
                 }
             }
         )
+        } // end if (!isPipMode) top bar
 
         Box(modifier = Modifier.weight(1f)) {
             AndroidView(
@@ -1582,6 +1601,7 @@ fun WebViewScreen(
             }
         }
 
+        if (!isPipMode) {
         if (showConsole) {
             WaosConsolePanel(
                 messages = consoleMessages,
@@ -1621,24 +1641,14 @@ fun WebViewScreen(
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl)))
             },
             onFloat = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(context)) {
-                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
-                    context.startActivity(intent)
-                } else {
-                    webApp?.let { app ->
-                        val currentUrl = webViewRef.value?.url
-                            ?.takeIf { it.isNotBlank() && !it.startsWith("about:") }
-                            ?: WebViewActivity.readLastVisitedUrl(context, webAppId)
-                            ?: app.url
-                        WebViewActivity.saveLastVisitedUrl(context, webAppId, currentUrl)
-                        val intent = Intent(context, com.cylonid.nativealpha.service.FloatingWindowService::class.java).apply {
-                            action = com.cylonid.nativealpha.service.FloatingWindowService.ACTION_ADD_WINDOW
-                            putExtra("webAppId", app.id)
-                            putExtra("webAppUrl", currentUrl)
-                            putExtra("webAppName", app.name)
-                        }
-                        context.startService(intent)
-                    }
+                // Enter Picture-in-Picture mode so the SAME WebView floats as an
+                // overlay — same process, same session, same login, same page.
+                // No separate service or second WebView is needed.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val params = PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(9, 16))
+                        .build()
+                    (context as? ComponentActivity)?.enterPictureInPictureMode(params)
                 }
             },
             onCredentials = { viewModel.openCredentialKeeper() },
@@ -1668,6 +1678,7 @@ fun WebViewScreen(
                 showSessionPasteDialog = true
             }
         )
+        } // end if (!isPipMode) bottom bar
     }
 
     if (showSessionPasteDialog) {
