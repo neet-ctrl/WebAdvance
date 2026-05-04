@@ -209,7 +209,7 @@ open class WebViewActivity : ComponentActivity() {
         WebViewFloatingOverlay.activeOverlay?.dismiss()
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         WebViewFloatingOverlay.activeOverlay?.dismiss()
     }
