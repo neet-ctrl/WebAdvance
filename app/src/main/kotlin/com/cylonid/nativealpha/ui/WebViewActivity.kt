@@ -1641,14 +1641,41 @@ fun WebViewScreen(
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentUrl)))
             },
             onFloat = {
-                // Enter Picture-in-Picture mode so the SAME WebView floats as an
-                // overlay — same process, same session, same login, same page.
-                // No separate service or second WebView is needed.
+                // Enter Picture-in-Picture mode — the SAME WebView shrinks to a floating
+                // overlay. Same process, same session, same login, same page.
+                // OS-native controls provided automatically:
+                //   • Tap anywhere  → return to full screen  (= "maximize")
+                //   • ✕ button      → close the app
+                //   • Drag          → reposition the window
+                //   • Pinch (API31) → resize the window
+                // We also add an explicit "Return to full screen" RemoteAction button
+                // so it is discoverable without having to know to tap the window.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val params = PictureInPictureParams.Builder()
+                    val activity = context as? ComponentActivity ?: return@WaosBottomBar
+                    val expandIntent = android.app.PendingIntent.getActivity(
+                        context, 1001,
+                        Intent(context, activity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        },
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                            android.app.PendingIntent.FLAG_IMMUTABLE
+                    )
+                    val expandAction = android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(
+                            context, R.drawable.ic_baseline_fullscreen_24
+                        ),
+                        "Full screen",
+                        "Return to full screen",
+                        expandIntent
+                    )
+                    val paramsBuilder = PictureInPictureParams.Builder()
                         .setAspectRatio(Rational(9, 16))
-                        .build()
-                    (context as? ComponentActivity)?.enterPictureInPictureMode(params)
+                        .setActions(listOf(expandAction))
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        paramsBuilder.setSeamlessResizeEnabled(true)
+                    }
+                    activity.enterPictureInPictureMode(paramsBuilder.build())
                 }
             },
             onCredentials = { viewModel.openCredentialKeeper() },

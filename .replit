@@ -27,3 +27,11 @@ args = "bash -c 'echo \"=== WAOS Android Project ===\"; echo \"Java: $(java -ver
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[ports]]
+localPort = 5173
+externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
