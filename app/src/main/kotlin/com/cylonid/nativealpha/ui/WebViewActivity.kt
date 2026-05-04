@@ -22,6 +22,8 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -1378,6 +1380,26 @@ fun WebViewScreen(
                             viewModel.captureClipboardItem(text, hint)
                         }
                     }, "waosClipboard")
+
+                    // Inject anti-bot-detection script before ANY page script runs.
+                    // Cloudflare TurnstileBot silently fails (reverts to un-ticked state)
+                    // when it detects these WebView-specific signals:
+                    //   1. navigator.webdriver = true  → most important signal
+                    //   2. window.chrome absent        → Cloudflare gates on this
+                    //   3. navigator.plugins empty     → headless/WebView giveaway
+                    //   4. navigator.languages wrong   → fingerprinting signal
+                    val antiBotJs = """
+                        (function() {
+                            try { Object.defineProperty(navigator,'webdriver',{get:()=>undefined,configurable:true}); } catch(e){}
+                            try { if(!window.chrome){window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};} } catch(e){}
+                            try { Object.defineProperty(navigator,'plugins',{get:()=>[{name:'Chrome PDF Plugin',filename:'internal-pdf-viewer',description:'Portable Document Format'}],configurable:true}); } catch(e){}
+                            try { Object.defineProperty(navigator,'languages',{get:()=>['en-US','en'],configurable:true}); } catch(e){}
+                        })();
+                    """.trimIndent()
+                    if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                        WebViewCompat.addDocumentStartJavaScript(webView, antiBotJs, setOf("*"))
+                    }
+
                     webView
                 },
                 update = { webView ->

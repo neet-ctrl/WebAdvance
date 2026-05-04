@@ -13,6 +13,8 @@ import android.view.*
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebView
 import android.widget.EditText
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -91,9 +93,17 @@ class FloatingWindowService : Service() {
     private fun addFloatingWindow(webAppId: Long, webAppUrl: String, webAppName: String) {
         if (floatingWindows.containsKey(webAppId)) return
 
-        // Apply the same per-app data directory isolation that the main WebViewActivity uses.
-        // Must be called BEFORE the layout is inflated (which instantiates the WebView).
-        SessionManager.applyIsolation(webAppId)
+        // The FloatingWindowService runs in the MAIN process. Each webapp slot process
+        // (":webapp_0"…":webapp_7") already owns a locked data-directory suffix of the
+        // form "app_profile_<id>". Trying to use the same suffix in a second process causes
+        // the crash: "Using WebView from more than one process at once with the same data
+        // directory is not supported." (crbug/558377).
+        // Fix: give the floating window its own dedicated suffix so it never conflicts.
+        try {
+            WebView.setDataDirectorySuffix("floating")
+        } catch (_: Exception) {
+            // Already set for this process — safe to ignore.
+        }
 
         val layoutParams = WindowManager.LayoutParams().apply {
             width = 800
@@ -275,6 +285,24 @@ class FloatingWindowService : Service() {
             override fun onProgressChanged(view: android.webkit.WebView?, newProgress: Int) {
                 // no-op — progress not shown in floating window title bar
             }
+        }
+
+        // Inject anti-bot-detection script that runs before ANY page script, so
+        // Cloudflare TurnstileBot and similar services see a real Chrome browser:
+        //   • navigator.webdriver → undefined  (biggest Cloudflare signal)
+        //   • window.chrome → minimal runtime object  (absent in bare WebView)
+        //   • navigator.plugins → non-empty  (empty list = headless giveaway)
+        //   • navigator.languages → ['en-US','en']
+        val antiBotJs = """
+            (function() {
+                try { Object.defineProperty(navigator,'webdriver',{get:()=>undefined,configurable:true}); } catch(e){}
+                try { if(!window.chrome){window.chrome={runtime:{},loadTimes:function(){},csi:function(){},app:{}};} } catch(e){}
+                try { Object.defineProperty(navigator,'plugins',{get:()=>[{name:'Chrome PDF Plugin',filename:'internal-pdf-viewer',description:'Portable Document Format'}],configurable:true}); } catch(e){}
+                try { Object.defineProperty(navigator,'languages',{get:()=>['en-US','en'],configurable:true}); } catch(e){}
+            })();
+        """.trimIndent()
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(webView, antiBotJs, setOf("*"))
         }
 
         // Open at the last page the user visited in the main WebView (or the home URL if none)
