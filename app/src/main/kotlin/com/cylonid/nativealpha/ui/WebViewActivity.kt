@@ -176,6 +176,18 @@ open class WebViewActivity : ComponentActivity() {
         // per app — no sharing across apps.
         SessionManager.applyIsolation(webAppId)
 
+        // Apply or clear FLAG_SECURE based on the user's blockScreenshots setting.
+        // By default (false) we explicitly clear the flag so the system can always
+        // take screenshots of this activity. FLAG_SECURE is only applied when the
+        // user has explicitly turned on the "Block Screenshots" security option.
+        val securityPrefs = getSharedPreferences("security_prefs", MODE_PRIVATE)
+        val blockScreenshots = securityPrefs.getBoolean("block_screenshots", false)
+        if (blockScreenshots) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+
         // Persistent cookies (incl. third-party, needed for OAuth logins).
         android.webkit.CookieManager.getInstance().setAcceptCookie(true)
 
@@ -1584,23 +1596,18 @@ fun WebViewScreen(
                     context.startActivity(intent)
                 } else {
                     webApp?.let { app ->
-                        val activity = context as? androidx.activity.ComponentActivity ?: return@let
                         val currentUrl = webViewRef.value?.url
                             ?.takeIf { it.isNotBlank() && !it.startsWith("about:") }
                             ?: WebViewActivity.readLastVisitedUrl(context, webAppId)
                             ?: app.url
                         WebViewActivity.saveLastVisitedUrl(context, webAppId, currentUrl)
-                        WebViewFloatingOverlay.activeOverlay?.dismiss()
-                        val overlay = WebViewFloatingOverlay(
-                            activity = activity,
-                            webAppId = webAppId,
-                            webAppName = app.name,
-                            webAppHomeUrl = app.url,
-                            currentUrl = currentUrl
-                        )
-                        WebViewFloatingOverlay.activeOverlay = overlay
-                        overlay.show()
-                        activity.moveTaskToBack(true)
+                        val intent = Intent(context, com.cylonid.nativealpha.service.FloatingWindowService::class.java).apply {
+                            action = com.cylonid.nativealpha.service.FloatingWindowService.ACTION_ADD_WINDOW
+                            putExtra("webAppId", app.id)
+                            putExtra("webAppUrl", currentUrl)
+                            putExtra("webAppName", app.name)
+                        }
+                        context.startService(intent)
                     }
                 }
             },
