@@ -1408,6 +1408,25 @@ fun WebViewScreen(
                     // This covers every signal Turnstile and hCaptcha are known to use.
                     val antiBotJs = """
 (function(){
+  // 0. Trusted Types — MUST run first, before anything else.
+  // Cloudflare Turnstile runs inside a strict iframe that enforces
+  // require-trusted-types-for 'script'. Its own internal code uses innerHTML,
+  // eval, and dynamic script URLs. In Android WebView those calls throw
+  // "This document requires 'TrustedHTML' assignment" and the challenge
+  // breaks itself before it can verify. Creating a passthrough 'default'
+  // policy is the exact fix — it is what real Chrome does internally.
+  try{
+    if(window.trustedTypes&&window.trustedTypes.createPolicy){
+      window.trustedTypes.createPolicy('default',{
+        createHTML:function(s){return s;},
+        createScript:function(s){return s;},
+        createScriptURL:function(s){return s;}
+      });
+    }
+  }catch(e){
+    // 'default' policy may already exist in this frame — that is fine.
+  }
+
   // 1. webdriver — single biggest signal; must be undefined, not false
   try{Object.defineProperty(navigator,'webdriver',{get:()=>undefined,configurable:true});}catch(e){}
 

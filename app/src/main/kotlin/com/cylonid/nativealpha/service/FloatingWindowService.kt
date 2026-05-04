@@ -291,6 +291,19 @@ class FloatingWindowService : Service() {
         // Covers all 16 signals that Cloudflare Turnstile / hCaptcha fingerprint.
         val antiBotJs = """
 (function(){
+  // Trusted Types passthrough — must be first.
+  // Cloudflare's Turnstile iframe enforces require-trusted-types-for 'script'.
+  // Its own internal innerHTML/eval calls throw TrustedHTML/TrustedScript errors
+  // in WebView, breaking the challenge. A passthrough 'default' policy fixes it.
+  try{
+    if(window.trustedTypes&&window.trustedTypes.createPolicy){
+      window.trustedTypes.createPolicy('default',{
+        createHTML:function(s){return s;},
+        createScript:function(s){return s;},
+        createScriptURL:function(s){return s;}
+      });
+    }
+  }catch(e){}
   try{Object.defineProperty(navigator,'webdriver',{get:()=>undefined,configurable:true});}catch(e){}
   ['__webdriver_evaluate','__selenium_evaluate','__webdriver_script_fn',
    '__webdriver_script_func','__webdriver_script_function','__fxdriver_evaluate',
