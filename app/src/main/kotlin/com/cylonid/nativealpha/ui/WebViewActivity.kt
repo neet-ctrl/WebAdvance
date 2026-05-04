@@ -965,6 +965,14 @@ fun WebViewScreen(
                         // Enable persistent cache so service workers / asset caches
                         // are reused after process restart.
                         cacheMode = WebSettings.LOAD_DEFAULT
+                        // Strip Android WebView markers ("; wv)" and "Version/4.0 ")
+                        // from the default UA so Cloudflare and other bot-detection
+                        // services treat this as a normal Chrome browser, not a WebView.
+                        val rawUA = userAgentString ?: ""
+                        userAgentString = rawUA
+                            .replace("; wv)", ")")
+                            .replace("; wv;", ";")
+                            .replace("Version/4.0 ", "")
                     }
                     // Cookies (incl. 3rd-party for OAuth flows like Google sign-in).
                     android.webkit.CookieManager.getInstance().setAcceptCookie(true)

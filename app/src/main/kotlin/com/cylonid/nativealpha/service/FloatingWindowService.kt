@@ -220,6 +220,14 @@ class FloatingWindowService : Service() {
             builtInZoomControls = true
             displayZoomControls = false
             setSupportZoom(true)
+            // Strip Android WebView markers ("; wv)" and "Version/4.0 ") from the
+            // default UA so Cloudflare and other bot-detection services see a normal
+            // Chrome-for-Android UA rather than an in-app WebView UA.
+            val rawUA = userAgentString ?: ""
+            userAgentString = rawUA
+                .replace("; wv)", ")")
+                .replace("; wv;", ";")
+                .replace("Version/4.0 ", "")
         }
         webView.webViewClient = webViewClient
         // Wire up a WebChromeClient so web pages can open the system file picker
@@ -277,6 +285,7 @@ class FloatingWindowService : Service() {
         val closeButton = view.findViewById<ImageButton>(R.id.closeButton)
         val minimizeButton = view.findViewById<ImageButton>(R.id.minimizeButton)
         val maximizeButton = view.findViewById<ImageButton>(R.id.maximizeButton)
+        val returnToAppButton = view.findViewById<ImageButton>(R.id.returnToAppButton)
 
         closeButton?.setOnClickListener {
             removeFloatingWindow(webAppId)
@@ -288,6 +297,18 @@ class FloatingWindowService : Service() {
 
         maximizeButton?.setOnClickListener {
             maximizeWindow(webAppId)
+        }
+
+        // "Return to app" — save the current page, close the floating window, and
+        // bring the main full-screen WebViewActivity for this app to the foreground.
+        // Uses WebAppRouter so the correct sandboxed process/activity slot is resumed.
+        returnToAppButton?.setOnClickListener {
+            val currentUrl = webView.url?.takeIf { it.isNotBlank() && !it.startsWith("about:") }
+            if (currentUrl != null) {
+                WebViewActivity.saveLastVisitedUrl(this@FloatingWindowService, webAppId, currentUrl)
+            }
+            removeFloatingWindow(webAppId)
+            com.cylonid.nativealpha.util.WebAppRouter.launch(this@FloatingWindowService, webAppId)
         }
 
         overflowButton?.setOnClickListener {
