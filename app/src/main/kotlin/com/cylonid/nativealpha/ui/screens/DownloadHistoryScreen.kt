@@ -1,5 +1,7 @@
 package com.cylonid.nativealpha.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -25,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,6 +48,7 @@ fun DownloadHistoryScreen(
     webAppDisplayName: String = "App",
     viewModel: DownloadViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val fileItems by viewModel.downloads.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val sortBy by viewModel.sortBy.collectAsState()
@@ -52,6 +56,26 @@ fun DownloadHistoryScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val currentFolderPath by viewModel.currentFolderPath.collectAsState()
     val rootFolderPath by viewModel.rootFolderPath.collectAsState()
+    val exportMessage by viewModel.exportMessage.collectAsState()
+
+    var pendingExportItem by remember { mutableStateOf<DownloadViewModel.FileSystemItem?>(null) }
+
+    val exportFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        val item = pendingExportItem
+        if (uri != null && item != null) {
+            viewModel.exportFileTo(item, uri)
+        }
+        pendingExportItem = null
+    }
+
+    LaunchedEffect(exportMessage) {
+        if (exportMessage != null) {
+            android.widget.Toast.makeText(context, exportMessage, android.widget.Toast.LENGTH_LONG).show()
+            viewModel.clearExportMessage()
+        }
+    }
 
     LaunchedEffect(webAppId) {
         viewModel.loadDownloads(webAppId)
@@ -302,7 +326,11 @@ fun DownloadHistoryScreen(
                         },
                         onShare = { viewModel.shareFile(item) },
                         onDuplicate = { viewModel.duplicateFile(item) },
-                        onDelete = { viewModel.deleteFile(item) }
+                        onDelete = { viewModel.deleteFile(item) },
+                        onExport = if (item.isDirectory) null else ({
+                            pendingExportItem = item
+                            exportFolderLauncher.launch(null)
+                        })
                     )
                 }
             }
@@ -453,7 +481,8 @@ fun FileSystemItemCard(
     onOpen: () -> Unit,
     onShare: () -> Unit,
     onDuplicate: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onExport: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -524,6 +553,19 @@ fun FileSystemItemCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (onExport != null) {
+                        IconButton(
+                            onClick = onExport,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.SaveAlt,
+                                contentDescription = "Export to folder",
+                                tint = GradGreenStart,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = onShare,
                         modifier = Modifier.size(32.dp)

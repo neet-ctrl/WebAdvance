@@ -1,6 +1,8 @@
 package com.cylonid.nativealpha.viewmodel
 
 import android.content.Context
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cylonid.nativealpha.data.DownloadItemDao
@@ -287,4 +289,40 @@ class DownloadViewModel @Inject constructor(
     }
 
     fun getFileSize(item: FileSystemItem): String = StorageUtil.formatFileSize(item.size)
+
+    private val _exportMessage = MutableStateFlow<String?>(null)
+    val exportMessage: StateFlow<String?> = _exportMessage
+
+    fun clearExportMessage() {
+        _exportMessage.value = null
+    }
+
+    fun exportFileTo(item: FileSystemItem, treeUri: Uri) {
+        viewModelScope.launch {
+            try {
+                val sourceFile = File(item.path)
+                if (!sourceFile.exists() || sourceFile.isDirectory) {
+                    _exportMessage.value = "Cannot export folder"
+                    return@launch
+                }
+                val tree = DocumentFile.fromTreeUri(context, treeUri)
+                if (tree == null || !tree.canWrite()) {
+                    _exportMessage.value = "Cannot write to selected folder"
+                    return@launch
+                }
+                val mimeType = item.mimeType?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
+                val newDoc = tree.createFile(mimeType, item.name)
+                if (newDoc == null) {
+                    _exportMessage.value = "Failed to create file in destination"
+                    return@launch
+                }
+                context.contentResolver.openOutputStream(newDoc.uri)?.use { out ->
+                    sourceFile.inputStream().use { it.copyTo(out) }
+                }
+                _exportMessage.value = "✓ Exported: ${item.name}"
+            } catch (e: Exception) {
+                _exportMessage.value = "Export failed: ${e.message}"
+            }
+        }
+    }
 }

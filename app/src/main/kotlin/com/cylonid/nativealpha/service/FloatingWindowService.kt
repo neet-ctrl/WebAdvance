@@ -24,7 +24,9 @@ import com.cylonid.nativealpha.model.WebApp
 import com.cylonid.nativealpha.model.WindowEntity
 import com.cylonid.nativealpha.model.WindowPresetEntity
 import com.cylonid.nativealpha.repository.WebAppRepository
+import com.cylonid.nativealpha.ui.WebViewActivity
 import com.cylonid.nativealpha.waos.util.WaosConstants
+import com.cylonid.nativealpha.webview.SessionManager
 import com.cylonid.nativealpha.webview.WebViewClientWithDownload
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -89,6 +91,10 @@ class FloatingWindowService : Service() {
     private fun addFloatingWindow(webAppId: Long, webAppUrl: String, webAppName: String) {
         if (floatingWindows.containsKey(webAppId)) return
 
+        // Apply the same per-app data directory isolation that the main WebViewActivity uses.
+        // Must be called BEFORE the layout is inflated (which instantiates the WebView).
+        SessionManager.applyIsolation(webAppId)
+
         val layoutParams = WindowManager.LayoutParams().apply {
             width = 800
             height = 600
@@ -134,6 +140,8 @@ class FloatingWindowService : Service() {
                     urlChipText.text = formatUrlChip(url)
                     val docTitle = webView.title
                     if (!docTitle.isNullOrBlank()) titleText.text = docTitle
+                    // Keep last-URL in sync so main WebViewActivity and floating window share history
+                    WebViewActivity.saveLastVisitedUrl(this@FloatingWindowService, webAppId, url)
                 }
             }
         ).apply {
@@ -214,7 +222,10 @@ class FloatingWindowService : Service() {
             setSupportZoom(true)
         }
         webView.webViewClient = webViewClient
-        webView.loadUrl(webAppUrl)
+        // Open at the last page the user visited in the main WebView (or the home URL if none)
+        val startUrl = WebViewActivity.readLastVisitedUrl(this, webAppId)
+            ?.takeIf { it.isNotBlank() } ?: webAppUrl
+        webView.loadUrl(startUrl)
 
         val closeButton = view.findViewById<ImageButton>(R.id.closeButton)
         val minimizeButton = view.findViewById<ImageButton>(R.id.minimizeButton)
@@ -1001,8 +1012,113 @@ class FloatingWindowService : Service() {
                 if (shouldReload && !windowView.desktopModeEnabled && !windowView.adblockEnabled) {
                     webView.reload()
                 }
+
+                // Show PIN overlay when the app is locked (mirrors main WebViewActivity behaviour)
+                if (webApp.isLocked && !webApp.pin.isNullOrBlank()) {
+                    showPinOverlay(windowView, webApp.pin!!)
+                }
             }
         }
+    }
+
+    /**
+     * Overlay a PIN-entry view directly inside the floating window's webViewContainer.
+     * The WebView is hidden until the correct PIN is entered.
+     * This mirrors the AlertDialog shown in WebViewActivity for locked apps.
+     */
+    private fun showPinOverlay(windowView: FloatingWindowView, correctPin: String) {
+        val container = windowView.view.findViewById<android.widget.FrameLayout>(R.id.webViewContainer)
+            ?: return
+        windowView.webView.visibility = View.GONE
+        windowView.view.findViewById<View>(R.id.resizeHandle)?.visibility = View.GONE
+
+        val dp = resources.displayMetrics.density
+
+        val overlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF0F0F23.toInt())
+            gravity = Gravity.CENTER
+            setPadding((24 * dp).toInt(), (32 * dp).toInt(), (24 * dp).toInt(), (32 * dp).toInt())
+        }
+
+        val lockEmoji = TextView(this).apply {
+            text = "🔒"
+            textSize = 36f
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(lockEmoji, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).also { it.bottomMargin = (8 * dp).toInt() })
+
+        val titleView = TextView(this).apply {
+            text = "App Locked"
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 17f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(titleView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).also { it.bottomMargin = (4 * dp).toInt() })
+
+        val subtitleView = TextView(this).apply {
+            text = "Enter PIN to unlock"
+            setTextColor(0xFFAAAAAA.toInt())
+            textSize = 13f
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(subtitleView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).also { it.bottomMargin = (20 * dp).toInt() })
+
+        val pinInput = EditText(this).apply {
+            hint = "PIN"
+            setHintTextColor(0xFF666666.toInt())
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 18f
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                    android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            gravity = Gravity.CENTER
+            setBackgroundColor(0xFF1E1E3A.toInt())
+            setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
+        }
+        overlay.addView(pinInput, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).also { it.bottomMargin = (8 * dp).toInt() })
+
+        val errorView = TextView(this).apply {
+            setTextColor(0xFFFF5555.toInt())
+            textSize = 12f
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        overlay.addView(errorView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).also { it.bottomMargin = (12 * dp).toInt() })
+
+        val unlockBtn = android.widget.Button(this).apply {
+            text = "Unlock"
+            setTextColor(0xFFFFFFFF.toInt())
+            setOnClickListener {
+                if (pinInput.text.toString() == correctPin) {
+                    container.removeView(overlay)
+                    windowView.webView.visibility = View.VISIBLE
+                    windowView.view.findViewById<View>(R.id.resizeHandle)?.visibility = View.VISIBLE
+                } else {
+                    errorView.text = "Incorrect PIN"
+                    errorView.visibility = View.VISIBLE
+                    pinInput.text.clear()
+                }
+            }
+        }
+        overlay.addView(unlockBtn, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
+        container.addView(overlay, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+        ))
     }
 
     private fun removeFloatingWindow(windowId: Long) {
